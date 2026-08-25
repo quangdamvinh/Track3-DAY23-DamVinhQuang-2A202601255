@@ -2,33 +2,56 @@
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 
-def build_checkpointer(kind: str = "memory", database_url: str | None = None) -> Any | None:
+def build_checkpointer(
+    kind: str = "memory",
+    database_url: str | None = None,
+) -> Any | None:
     """Return a LangGraph checkpointer.
 
-    TODO(student): implement SQLite support for the persistence extension track.
-    The starter provides MemorySaver only — SQLite/Postgres are extension tasks.
+    Supported backends:
+    - none: no persistence
+    - memory: in-memory MemorySaver
+    - sqlite: persistent SQLite checkpointer
 
-    For SQLite:
-    - pip install langgraph-checkpoint-sqlite
-    - Use SqliteSaver with sqlite3.connect() and WAL mode
-    - See: https://langchain-ai.github.io/langgraph/how-tos/persistence/
+    For SQLite, the database path is taken from database_url.
     """
     if kind == "none":
         return None
+
     if kind == "memory":
         from langgraph.checkpoint.memory import MemorySaver
 
         return MemorySaver()
+
     if kind == "sqlite":
-        raise NotImplementedError(
-            "TODO(student): implement SQLite checkpointer. "
-            "Hint: pip install langgraph-checkpoint-sqlite, then use SqliteSaver"
+        try:
+            from langgraph.checkpoint.sqlite import SqliteSaver
+        except ImportError as exc:
+            raise RuntimeError(
+                "SQLite checkpointer requires langgraph-checkpoint-sqlite. "
+                "Install it with: pip install langgraph-checkpoint-sqlite"
+            ) from exc
+
+        db_path = database_url or "langgraph_checkpoints.db"
+
+        conn = sqlite3.connect(
+            db_path,
+            check_same_thread=False,
         )
+
+        # Enable WAL mode for better read/write behavior.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+
+        return SqliteSaver(conn=conn)
+
     if kind == "postgres":
         raise NotImplementedError(
-            "TODO(student): implement Postgres checkpointer (optional extension)"
+            "Postgres checkpointer is optional and is not required for this lab."
         )
+
     raise ValueError(f"Unknown checkpointer kind: {kind}")
